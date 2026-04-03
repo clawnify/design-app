@@ -41,6 +41,16 @@ export function App() {
     }
   }, [designId, designState.loading]);
 
+  // Sync canvas size to the loaded design's dimensions
+  useEffect(() => {
+    if (designState.activeDesign) {
+      const { width, height } = designState.activeDesign;
+      if (width && height && (width !== canvasState.canvasWidth || height !== canvasState.canvasHeight)) {
+        canvasState.setCanvasSize(width, height);
+      }
+    }
+  }, [designState.activeDesign]);
+
   // Auto-activate first page when pages load and canvases are registered
   useEffect(() => {
     if (designState.pages.length > 0 && !canvasState.activeCanvasId) {
