@@ -10,6 +10,8 @@ OpenClaw Design App is a production-ready graphic design editor designed for the
 
 Unlike Canva or Adobe Express, this runs entirely on your own infrastructure. No subscriptions, no watermarks, no vendor lock-in. Create pixel-perfect social media graphics with professional typography and export at 2x resolution.
 
+<img width="1726" height="991" alt="Image" src="https://github.com/user-attachments/assets/55fcc0aa-4606-4f80-b56a-7734d7673914" />
+
 ## Features
 
 - **Fabric.js canvas** — full object manipulation with retina/HiDPI rendering (2x device pixel ratio)
