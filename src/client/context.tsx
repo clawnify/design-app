@@ -1,6 +1,6 @@
 import { createContext } from "preact";
 import { useContext } from "preact/hooks";
-import type { Design, Template } from "./types";
+import type { Design, Template, Page } from "./types";
 import type * as fabric from "fabric";
 
 export interface CanvasSize {
@@ -17,9 +17,12 @@ export const CANVAS_SIZES: CanvasSize[] = [
 ];
 
 export interface EditorContextValue {
-  // Canvas
+  // Canvas (multi-canvas)
+  registerCanvas: (pageId: string, canvas: fabric.Canvas) => void;
+  unregisterCanvas: (pageId: string) => void;
+  setActiveCanvas: (pageId: string) => void;
+  activeCanvasId: string | null;
   canvas: fabric.Canvas | null;
-  setCanvas: (c: fabric.Canvas | null) => void;
   selectedObject: fabric.FabricObject | null;
   canvasWidth: number;
   canvasHeight: number;
@@ -45,18 +48,32 @@ export interface EditorContextValue {
   zoomOut: () => void;
   exportPNG: () => void;
   getCanvasJSON: () => string;
-  loadCanvasJSON: (json: string) => void;
+  getCanvasJSONForPage: (pageId: string) => string;
   loadTemplate: (template: Template) => void;
+
+  // Router
+  navigate: (to: string) => void;
 
   // Designs
   designs: Design[];
   activeDesign: Design | null;
-  createDesign: () => Promise<void>;
-  loadDesign: (id: number) => Promise<void>;
+  createDesign: () => Promise<string | undefined>;
+  createFromTemplate: (template: Template) => Promise<string | undefined>;
+  loadDesign: (id: string) => Promise<void>;
   saveDesign: () => Promise<void>;
-  deleteDesign: (id: number) => Promise<void>;
-  renameDesign: (id: number, name: string) => Promise<void>;
+  deleteDesign: (id: string) => Promise<void>;
+  renameDesign: (id: string, name: string) => Promise<void>;
   saving: boolean;
+
+  // Pages
+  pages: Page[];
+  activePageId: string | null;
+  activePage: Page | null;
+  addPage: () => Promise<void>;
+  duplicatePage: (pageId: string) => Promise<void>;
+  deletePage: (pageId: string) => Promise<void>;
+  renamePage: (pageId: string, title: string) => Promise<void>;
+  switchToPage: (pageId: string) => void;
 
   // Templates
   templates: Template[];

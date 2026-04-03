@@ -14,18 +14,26 @@ import {
 import { useEditor } from "../context";
 import { TemplateCard } from "./template-card";
 import { DesignList } from "./design-list";
-import { api } from "../api";
 
-type Tab = "templates" | "text" | "shapes" | "images" | "background" | "designs";
+type Section = "templates" | "text" | "shapes" | "images" | "background" | "designs";
 
-const TABS: { key: Tab; icon: typeof LayoutGrid; label: string }[] = [
+const SECTIONS: { key: Section; icon: typeof LayoutGrid; label: string }[] = [
   { key: "templates", icon: Sparkles, label: "Templates" },
+  { key: "shapes", icon: Square, label: "Elements" },
   { key: "text", icon: Type, label: "Text" },
-  { key: "shapes", icon: Square, label: "Shapes" },
-  { key: "images", icon: Image, label: "Images" },
+  { key: "images", icon: Upload, label: "Uploads" },
   { key: "background", icon: Palette, label: "Bg" },
   { key: "designs", icon: LayoutGrid, label: "Designs" },
 ];
+
+const SECTION_TITLES: Record<Section, string> = {
+  templates: "Templates",
+  shapes: "Elements",
+  text: "Text",
+  images: "Uploads",
+  background: "Background",
+  designs: "Designs",
+};
 
 const GRADIENT_PRESETS = [
   "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
@@ -45,10 +53,14 @@ const BG_COLORS = [
 
 export function LeftSidebar() {
   const { addText, addShape, addImage, setBackground, templates, loadTemplate } = useEditor();
-  const [activeTab, setActiveTab] = useState<Tab>("templates");
+  const [activeSection, setActiveSection] = useState<Section | null>("templates");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bgFileRef = useRef<HTMLInputElement>(null);
+
+  const handleSectionClick = (key: Section) => {
+    setActiveSection((prev) => (prev === key ? null : key));
+  };
 
   const handleImageUpload = useCallback(
     async (files: FileList | null) => {
@@ -58,8 +70,6 @@ export function LeftSidebar() {
         for (const file of Array.from(files)) {
           const form = new FormData();
           form.append("file", file);
-          const { url } = await api<{ url: string }>("POST", "/api/uploads", undefined);
-          // Use fetch directly for FormData
           const resp = await fetch("/api/uploads", { method: "POST", body: form });
           const data = await resp.json();
           if (data.url) addImage(data.url);
@@ -97,191 +107,202 @@ export function LeftSidebar() {
     [handleImageUpload]
   );
 
+  const isOpen = activeSection !== null;
+
   return (
-    <aside class="w-[260px] bg-[#16162a] border-r border-[#2d2d42] flex flex-col shrink-0">
-      {/* Tab strip */}
-      <div class="grid grid-cols-6 border-b border-[#2d2d42]">
-        {TABS.map((t) => (
+    <aside class="flex flex-row shrink-0">
+      {/* Icon Rail */}
+      <div class="w-[70px] bg-white border-r border-zinc-200 flex flex-col items-center pt-2 gap-0.5 shrink-0">
+        {SECTIONS.map((s) => (
           <button
-            key={t.key}
-            class={`flex flex-col items-center gap-0.5 py-2 bg-transparent border-none cursor-pointer transition-all text-[10px] ${
-              activeTab === t.key
+            key={s.key}
+            class={`flex flex-col items-center justify-center gap-0.5 w-[56px] h-[56px] rounded-lg bg-transparent border-none cursor-pointer transition-all ${
+              activeSection === s.key
                 ? "text-accent bg-accent/10"
-                : "text-zinc-500 hover:text-zinc-300"
+                : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50"
             }`}
-            onClick={() => setActiveTab(t.key)}
+            onClick={() => handleSectionClick(s.key)}
           >
-            <t.icon size={16} />
-            {t.label}
+            <s.icon size={20} />
+            <span class="text-[10px] leading-tight">{s.label}</span>
           </button>
         ))}
       </div>
 
-      {/* Content */}
-      <div class="flex-1 overflow-y-auto p-3">
-        {/* Templates */}
-        {activeTab === "templates" && (
-          <div>
-            <p class="text-zinc-500 text-[11px] mb-3">Click a template to apply</p>
-            <div class="grid grid-cols-2 gap-2">
-              {templates.map((t) => (
-                <TemplateCard key={t.id} template={t} onClick={() => loadTemplate(t)} />
-              ))}
-            </div>
-          </div>
-        )}
+      {/* Content Panel */}
+      <div
+        class="bg-white border-r border-zinc-200 overflow-hidden transition-all duration-200 ease-in-out"
+        style={{ width: isOpen ? "240px" : "0px" }}
+      >
+        <div class="w-[240px] h-full flex flex-col">
+          {activeSection && (
+            <>
+              <div class="px-3 pt-3 pb-2 shrink-0">
+                <h2 class="text-xs font-semibold text-zinc-800 uppercase tracking-wide m-0">
+                  {SECTION_TITLES[activeSection]}
+                </h2>
+              </div>
+              <div class="flex-1 overflow-y-auto px-3 pb-3">
+                {activeSection === "templates" && (
+                  <div>
+                    <p class="text-zinc-400 text-[11px] mb-3">Click a template to apply</p>
+                    <div class="grid grid-cols-2 gap-2">
+                      {templates.map((t) => (
+                        <TemplateCard key={t.id} template={t} onClick={() => loadTemplate(t)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        {/* Text */}
-        {activeTab === "text" && (
-          <div class="flex flex-col gap-2">
-            <p class="text-zinc-500 text-[11px] mb-1">Click to add text</p>
-            <button
-              class="w-full text-left p-3 rounded-lg bg-[#1e1e34] border border-[#2d2d42] cursor-pointer transition-all hover:border-accent hover:bg-accent/5 group"
-              onClick={() => addText("heading")}
-            >
-              <span class="text-lg font-bold text-white group-hover:text-accent transition-colors">
-                Add a heading
-              </span>
-              <span class="block text-[10px] text-zinc-500 mt-0.5">
-                Montserrat Bold, 48px
-              </span>
-            </button>
-            <button
-              class="w-full text-left p-3 rounded-lg bg-[#1e1e34] border border-[#2d2d42] cursor-pointer transition-all hover:border-accent hover:bg-accent/5 group"
-              onClick={() => addText("subheading")}
-            >
-              <span class="text-sm font-medium text-white group-hover:text-accent transition-colors">
-                Add a subheading
-              </span>
-              <span class="block text-[10px] text-zinc-500 mt-0.5">
-                Inter Medium, 32px
-              </span>
-            </button>
-            <button
-              class="w-full text-left p-3 rounded-lg bg-[#1e1e34] border border-[#2d2d42] cursor-pointer transition-all hover:border-accent hover:bg-accent/5 group"
-              onClick={() => addText("body")}
-            >
-              <span class="text-xs text-white group-hover:text-accent transition-colors">
-                Add body text
-              </span>
-              <span class="block text-[10px] text-zinc-500 mt-0.5">
-                Inter Regular, 18px
-              </span>
-            </button>
-          </div>
-        )}
+                {activeSection === "text" && (
+                  <div class="flex flex-col gap-2">
+                    <p class="text-zinc-400 text-[11px] mb-1">Click to add text</p>
+                    <button
+                      class="w-full text-left p-3 rounded-lg bg-white border border-zinc-200 cursor-pointer transition-all hover:border-accent hover:bg-accent/5 group"
+                      onClick={() => addText("heading")}
+                    >
+                      <span class="text-lg font-bold text-zinc-900 group-hover:text-accent transition-colors">
+                        Add a heading
+                      </span>
+                      <span class="block text-[10px] text-zinc-400 mt-0.5">
+                        Montserrat Bold, 48px
+                      </span>
+                    </button>
+                    <button
+                      class="w-full text-left p-3 rounded-lg bg-white border border-zinc-200 cursor-pointer transition-all hover:border-accent hover:bg-accent/5 group"
+                      onClick={() => addText("subheading")}
+                    >
+                      <span class="text-sm font-medium text-zinc-900 group-hover:text-accent transition-colors">
+                        Add a subheading
+                      </span>
+                      <span class="block text-[10px] text-zinc-400 mt-0.5">
+                        Inter Medium, 32px
+                      </span>
+                    </button>
+                    <button
+                      class="w-full text-left p-3 rounded-lg bg-white border border-zinc-200 cursor-pointer transition-all hover:border-accent hover:bg-accent/5 group"
+                      onClick={() => addText("body")}
+                    >
+                      <span class="text-xs text-zinc-900 group-hover:text-accent transition-colors">
+                        Add body text
+                      </span>
+                      <span class="block text-[10px] text-zinc-400 mt-0.5">
+                        Inter Regular, 18px
+                      </span>
+                    </button>
+                  </div>
+                )}
 
-        {/* Shapes */}
-        {activeTab === "shapes" && (
-          <div>
-            <p class="text-zinc-500 text-[11px] mb-2">Click to add a shape</p>
-            <div class="grid grid-cols-2 gap-2">
-              {[
-                { type: "rect" as const, icon: Square, label: "Rectangle" },
-                { type: "circle" as const, icon: Circle, label: "Circle" },
-                { type: "triangle" as const, icon: Triangle, label: "Triangle" },
-                { type: "line" as const, icon: Minus, label: "Line" },
-              ].map((s) => (
-                <button
-                  key={s.type}
-                  class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-[#1e1e34] border border-[#2d2d42] cursor-pointer transition-all hover:border-accent hover:bg-accent/5"
-                  onClick={() => addShape(s.type)}
-                >
-                  <s.icon size={24} class="text-zinc-400" />
-                  <span class="text-[11px] text-zinc-500">{s.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+                {activeSection === "shapes" && (
+                  <div>
+                    <p class="text-zinc-400 text-[11px] mb-2">Click to add a shape</p>
+                    <div class="grid grid-cols-2 gap-2">
+                      {[
+                        { type: "rect" as const, icon: Square, label: "Rectangle" },
+                        { type: "circle" as const, icon: Circle, label: "Circle" },
+                        { type: "triangle" as const, icon: Triangle, label: "Triangle" },
+                        { type: "line" as const, icon: Minus, label: "Line" },
+                      ].map((s) => (
+                        <button
+                          key={s.type}
+                          class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-white border border-zinc-200 cursor-pointer transition-all hover:border-accent hover:bg-accent/5"
+                          onClick={() => addShape(s.type)}
+                        >
+                          <s.icon size={24} class="text-zinc-400" />
+                          <span class="text-[11px] text-zinc-400">{s.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        {/* Images */}
-        {activeTab === "images" && (
-          <div>
-            <p class="text-zinc-500 text-[11px] mb-2">Upload images to add to canvas</p>
-            <div
-              class="border-2 border-dashed border-[#3d3d52] rounded-lg p-6 text-center cursor-pointer transition-all hover:border-accent/50 hover:bg-accent/5"
-              onClick={() => fileInputRef.current?.click()}
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-            >
-              <Upload size={24} class="text-zinc-500 mx-auto mb-2" />
-              <p class="text-xs text-zinc-400">
-                {uploading ? "Uploading..." : "Click or drag images here"}
-              </p>
-              <p class="text-[10px] text-zinc-600 mt-1">PNG, JPG, SVG, WebP</p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              class="hidden"
-              onChange={(e) => handleImageUpload((e.target as HTMLInputElement).files)}
-            />
-          </div>
-        )}
+                {activeSection === "images" && (
+                  <div>
+                    <p class="text-zinc-400 text-[11px] mb-2">Upload images to add to canvas</p>
+                    <div
+                      class="border-2 border-dashed border-zinc-300 rounded-lg p-6 text-center cursor-pointer transition-all hover:border-accent/50 hover:bg-accent/5"
+                      onClick={() => fileInputRef.current?.click()}
+                      onDrop={handleDrop}
+                      onDragOver={(e) => e.preventDefault()}
+                    >
+                      <Upload size={24} class="text-zinc-400 mx-auto mb-2" />
+                      <p class="text-xs text-zinc-400">
+                        {uploading ? "Uploading..." : "Click or drag images here"}
+                      </p>
+                      <p class="text-[10px] text-zinc-600 mt-1">PNG, JPG, SVG, WebP</p>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      class="hidden"
+                      onChange={(e) => handleImageUpload((e.target as HTMLInputElement).files)}
+                    />
+                  </div>
+                )}
 
-        {/* Background */}
-        {activeTab === "background" && (
-          <div>
-            <p class="text-zinc-500 text-[11px] mb-2">Solid colors</p>
-            <div class="grid grid-cols-4 gap-1.5 mb-4">
-              {BG_COLORS.map((c) => (
-                <button
-                  key={c}
-                  class="w-full aspect-square rounded-md border border-[#3d3d52] cursor-pointer transition-all hover:scale-110 hover:border-accent"
-                  style={{ background: c }}
-                  onClick={() => setBackground("color", c)}
-                />
-              ))}
-            </div>
+                {activeSection === "background" && (
+                  <div>
+                    <p class="text-zinc-400 text-[11px] mb-2">Solid colors</p>
+                    <div class="grid grid-cols-4 gap-1.5 mb-4">
+                      {BG_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          class="w-full aspect-square rounded-md border border-zinc-300 cursor-pointer transition-all hover:scale-110 hover:border-accent"
+                          style={{ background: c }}
+                          onClick={() => setBackground("color", c)}
+                        />
+                      ))}
+                    </div>
 
-            <p class="text-zinc-500 text-[11px] mb-2">Custom color</p>
-            <input
-              type="color"
-              class="w-full h-8 rounded-md border border-[#3d3d52] cursor-pointer bg-transparent"
-              onChange={(e) =>
-                setBackground("color", (e.target as HTMLInputElement).value)
-              }
-            />
+                    <p class="text-zinc-400 text-[11px] mb-2">Custom color</p>
+                    <input
+                      type="color"
+                      class="w-full h-8 rounded-md border border-zinc-300 cursor-pointer bg-transparent"
+                      onChange={(e) =>
+                        setBackground("color", (e.target as HTMLInputElement).value)
+                      }
+                    />
 
-            <p class="text-zinc-500 text-[11px] mb-2 mt-4">Gradient presets</p>
-            <div class="grid grid-cols-3 gap-1.5 mb-4">
-              {GRADIENT_PRESETS.map((g, i) => (
-                <button
-                  key={i}
-                  class="w-full aspect-square rounded-md border border-[#3d3d52] cursor-pointer transition-all hover:scale-110 hover:border-accent"
-                  style={{ background: g }}
-                  onClick={() => {
-                    // Extract the first color as a simple background
-                    const match = g.match(/#[0-9a-f]{6}/gi);
-                    if (match) setBackground("color", match[0]);
-                  }}
-                />
-              ))}
-            </div>
+                    <p class="text-zinc-400 text-[11px] mb-2 mt-4">Gradient presets</p>
+                    <div class="grid grid-cols-3 gap-1.5 mb-4">
+                      {GRADIENT_PRESETS.map((g, i) => (
+                        <button
+                          key={i}
+                          class="w-full aspect-square rounded-md border border-zinc-300 cursor-pointer transition-all hover:scale-110 hover:border-accent"
+                          style={{ background: g }}
+                          onClick={() => {
+                            const match = g.match(/#[0-9a-f]{6}/gi);
+                            if (match) setBackground("color", match[0]);
+                          }}
+                        />
+                      ))}
+                    </div>
 
-            <p class="text-zinc-500 text-[11px] mb-2">Background image</p>
-            <button
-              class="w-full p-3 rounded-lg bg-[#1e1e34] border border-[#2d2d42] cursor-pointer text-xs text-zinc-400 hover:border-accent hover:text-zinc-200 transition-all"
-              onClick={() => bgFileRef.current?.click()}
-            >
-              <Upload size={14} class="inline mr-1.5" />
-              Upload image
-            </button>
-            <input
-              ref={bgFileRef}
-              type="file"
-              accept="image/*"
-              class="hidden"
-              onChange={(e) => handleBgUpload((e.target as HTMLInputElement).files)}
-            />
-          </div>
-        )}
+                    <p class="text-zinc-400 text-[11px] mb-2">Background image</p>
+                    <button
+                      class="w-full p-3 rounded-lg bg-white border border-zinc-200 cursor-pointer text-xs text-zinc-400 hover:border-accent hover:text-zinc-800 transition-all"
+                      onClick={() => bgFileRef.current?.click()}
+                    >
+                      <Upload size={14} class="inline mr-1.5" />
+                      Upload image
+                    </button>
+                    <input
+                      ref={bgFileRef}
+                      type="file"
+                      accept="image/*"
+                      class="hidden"
+                      onChange={(e) => handleBgUpload((e.target as HTMLInputElement).files)}
+                    />
+                  </div>
+                )}
 
-        {/* Designs */}
-        {activeTab === "designs" && <DesignList />}
+                {activeSection === "designs" && <DesignList />}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </aside>
   );

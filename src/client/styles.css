@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #12121e;
-  --color-surface-secondary: #16162a;
-  --color-surface-card: #1e1e34;
-  --color-surface-hover: #2d2d42;
-  --color-border-dim: #2d2d42;
-  --color-border-mid: #3d3d52;
+  --color-surface: #F3F4F7;
+  --color-surface-secondary: #FFFFFF;
+  --color-surface-card: #FFFFFF;
+  --color-surface-hover: #E8EAEF;
+  --color-border-dim: #E2E5EB;
+  --color-border-mid: #D1D5DB;
   --color-accent: #6366f1;
   --color-accent-hover: #4f46e5;
   --color-accent-light: rgba(99, 102, 241, 0.08);
@@ -18,19 +18,19 @@ html, body, #app {
 }
 
 body {
-  @apply bg-surface text-zinc-100 text-[13px] antialiased;
+  @apply bg-surface text-zinc-800 text-[13px] antialiased;
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-zinc-700 rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-zinc-600; }
+::-webkit-scrollbar-thumb { @apply bg-zinc-300 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-zinc-400; }
 
 /* ── Spinner ───────────────────────────────────────────────────────── */
 .spinner {
-  @apply inline-block w-3.5 h-3.5 rounded-full border-2 border-zinc-600 border-t-current;
+  @apply inline-block w-3.5 h-3.5 rounded-full border-2 border-zinc-300 border-t-current;
   animation: spin 0.6s linear infinite;
 }
 
@@ -39,8 +39,8 @@ body {
 /* ── Canvas area ───────────────────────────────────────────────────── */
 .canvas-container {
   box-shadow:
-    0 0 0 1px rgba(99, 102, 241, 0.1),
-    0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+    0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 25px 50px -12px rgba(0, 0, 0, 0.15) !important;
 }
 
 /* ── Custom range slider ───────────────────────────────────────────── */
@@ -50,7 +50,7 @@ input[type="range"] {
 }
 
 input[type="range"]::-webkit-slider-track {
-  @apply bg-zinc-700 rounded-full;
+  @apply bg-zinc-200 rounded-full;
   height: 4px;
 }
 
@@ -76,7 +76,7 @@ input[type="color"]::-webkit-color-swatch {
 /* ── Select ────────────────────────────────────────────────────────── */
 select {
   @apply appearance-none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
   padding-right: 28px;

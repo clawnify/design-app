@@ -17,65 +17,128 @@ const SHAPE_DEFAULTS = {
   opacity: 1,
 };
 
+interface CanvasHistory {
+  entries: string[];
+  index: number;
+}
+
 export function useCanvasState() {
-  const [canvas, setCanvasRaw] = useState<fabric.Canvas | null>(null);
+  const canvasMapRef = useRef<Map<string, fabric.Canvas>>(new Map());
+  const historyMapRef = useRef<Map<string, CanvasHistory>>(new Map());
+  const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
+  const activeCanvasIdRef = useRef<string | null>(null);
   const [selectedObject, setSelectedObject] = useState<fabric.FabricObject | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(1080);
   const [canvasHeight, setCanvasHeight] = useState(1080);
   const [zoom, setZoom] = useState(0.58);
   const [fitScale, setFitScale] = useState(0.58);
-
-  const historyRef = useRef<string[]>([]);
-  const historyIndexRef = useRef(-1);
-  const isRestoringRef = useRef(false);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const isRestoringRef = useRef<Set<string>>(new Set());
 
-  const saveHistory = useCallback(() => {
-    if (!canvas || isRestoringRef.current) return;
-    const json = JSON.stringify(canvas.toJSON());
-    const idx = historyIndexRef.current;
-    // Truncate any forward history
-    historyRef.current = historyRef.current.slice(0, idx + 1);
-    historyRef.current.push(json);
-    if (historyRef.current.length > MAX_HISTORY) {
-      historyRef.current.shift();
-    } else {
-      historyIndexRef.current = historyRef.current.length - 1;
+  // Helper to get the active canvas
+  const getActiveCanvas = useCallback((): fabric.Canvas | null => {
+    const id = activeCanvasIdRef.current;
+    if (!id) return null;
+    return canvasMapRef.current.get(id) ?? null;
+  }, []);
+
+  // Update undo/redo state for active canvas
+  const updateUndoRedoState = useCallback((pageId: string) => {
+    if (pageId !== activeCanvasIdRef.current) return;
+    const hist = historyMapRef.current.get(pageId);
+    if (!hist) {
+      setCanUndo(false);
+      setCanRedo(false);
+      return;
     }
-    setCanUndo(historyIndexRef.current > 0);
-    setCanRedo(false);
-  }, [canvas]);
+    setCanUndo(hist.index > 0);
+    setCanRedo(hist.index < hist.entries.length - 1);
+  }, []);
 
-  const setCanvas = useCallback(
-    (c: fabric.Canvas | null) => {
-      setCanvasRaw(c);
-      if (c) {
-        // Selection events
-        c.on("selection:created", (e) => setSelectedObject(e.selected?.[0] ?? null));
-        c.on("selection:updated", (e) => setSelectedObject(e.selected?.[0] ?? null));
-        c.on("selection:cleared", () => setSelectedObject(null));
+  const saveHistory = useCallback((pageId: string) => {
+    if (isRestoringRef.current.has(pageId)) return;
+    const canvas = canvasMapRef.current.get(pageId);
+    if (!canvas) return;
+    const json = JSON.stringify(canvas.toJSON());
+    let hist = historyMapRef.current.get(pageId);
+    if (!hist) {
+      hist = { entries: [], index: -1 };
+      historyMapRef.current.set(pageId, hist);
+    }
+    // Truncate forward history
+    hist.entries = hist.entries.slice(0, hist.index + 1);
+    hist.entries.push(json);
+    if (hist.entries.length > MAX_HISTORY) {
+      hist.entries.shift();
+    } else {
+      hist.index = hist.entries.length - 1;
+    }
+    updateUndoRedoState(pageId);
+  }, [updateUndoRedoState]);
 
-        // History events
-        c.on("object:added", () => saveHistory());
-        c.on("object:modified", () => saveHistory());
-        c.on("object:removed", () => saveHistory());
+  const registerCanvas = useCallback((pageId: string, canvas: fabric.Canvas) => {
+    canvasMapRef.current.set(pageId, canvas);
 
-        // Initial history snapshot
-        setTimeout(() => {
-          const json = JSON.stringify(c.toJSON());
-          historyRef.current = [json];
-          historyIndexRef.current = 0;
-        }, 100);
+    // Selection events
+    canvas.on("selection:created", (e) => {
+      if (activeCanvasIdRef.current === pageId) {
+        setSelectedObject(e.selected?.[0] ?? null);
       }
-    },
-    [saveHistory]
-  );
+    });
+    canvas.on("selection:updated", (e) => {
+      if (activeCanvasIdRef.current === pageId) {
+        setSelectedObject(e.selected?.[0] ?? null);
+      }
+    });
+    canvas.on("selection:cleared", () => {
+      if (activeCanvasIdRef.current === pageId) {
+        setSelectedObject(null);
+      }
+    });
+
+    // History events
+    canvas.on("object:added", () => saveHistory(pageId));
+    canvas.on("object:modified", () => saveHistory(pageId));
+    canvas.on("object:removed", () => saveHistory(pageId));
+
+    // Initial history snapshot
+    setTimeout(() => {
+      const json = JSON.stringify(canvas.toJSON());
+      historyMapRef.current.set(pageId, { entries: [json], index: 0 });
+      updateUndoRedoState(pageId);
+    }, 100);
+  }, [saveHistory, updateUndoRedoState]);
+
+  const unregisterCanvas = useCallback((pageId: string) => {
+    canvasMapRef.current.delete(pageId);
+    historyMapRef.current.delete(pageId);
+  }, []);
+
+  const setActiveCanvas = useCallback((pageId: string) => {
+    const prevId = activeCanvasIdRef.current;
+    if (prevId === pageId) return;
+
+    // Clear selection on previous canvas
+    if (prevId) {
+      const prevCanvas = canvasMapRef.current.get(prevId);
+      if (prevCanvas) {
+        prevCanvas.discardActiveObject();
+        prevCanvas.requestRenderAll();
+      }
+    }
+
+    activeCanvasIdRef.current = pageId;
+    setActiveCanvasId(pageId);
+    setSelectedObject(null);
+    updateUndoRedoState(pageId);
+  }, [updateUndoRedoState]);
 
   // ── Text ────────────────────────────────────────────────────────────
 
   const addText = useCallback(
     (preset: "heading" | "subheading" | "body") => {
+      const canvas = getActiveCanvas();
       if (!canvas) return;
       const cfg = TEXT_PRESETS[preset];
       const text = new fabric.Textbox(cfg.text, {
@@ -93,13 +156,14 @@ export function useCanvasState() {
       canvas.setActiveObject(text);
       canvas.requestRenderAll();
     },
-    [canvas, canvasWidth, canvasHeight]
+    [getActiveCanvas, canvasWidth, canvasHeight]
   );
 
   // ── Shapes ──────────────────────────────────────────────────────────
 
   const addShape = useCallback(
     (type: "rect" | "circle" | "line" | "triangle") => {
+      const canvas = getActiveCanvas();
       if (!canvas) return;
       let obj: fabric.FabricObject;
       const cx = canvasWidth / 2;
@@ -148,13 +212,14 @@ export function useCanvasState() {
       canvas.setActiveObject(obj);
       canvas.requestRenderAll();
     },
-    [canvas, canvasWidth, canvasHeight]
+    [getActiveCanvas, canvasWidth, canvasHeight]
   );
 
   // ── Images ──────────────────────────────────────────────────────────
 
   const addImage = useCallback(
     async (url: string) => {
+      const canvas = getActiveCanvas();
       if (!canvas) return;
       try {
         const img = await fabric.FabricImage.fromURL(url, { crossOrigin: "anonymous" });
@@ -176,28 +241,25 @@ export function useCanvasState() {
         console.error("Failed to load image:", e);
       }
     },
-    [canvas, canvasWidth, canvasHeight]
+    [getActiveCanvas, canvasWidth, canvasHeight]
   );
 
   // ── Background ──────────────────────────────────────────────────────
 
   const setBackground = useCallback(
     (type: "color" | "gradient" | "image", value: string) => {
-      if (!canvas) return;
-      if (type === "color") {
+      const canvas = getActiveCanvas();
+      const pageId = activeCanvasIdRef.current;
+      if (!canvas || !pageId) return;
+      if (type === "color" || type === "gradient") {
         canvas.backgroundColor = value;
         canvas.requestRenderAll();
-        saveHistory();
-      } else if (type === "gradient") {
-        canvas.backgroundColor = value;
-        canvas.requestRenderAll();
-        saveHistory();
+        saveHistory(pageId);
       } else if (type === "image") {
         fabric.FabricImage.fromURL(value, { crossOrigin: "anonymous" }).then((img) => {
           const scaleX = canvasWidth / (img.width || 1);
           const scaleY = canvasHeight / (img.height || 1);
           img.set({ left: 0, top: 0, scaleX, scaleY, selectable: false, evented: false });
-          // Remove any existing background image objects
           const objects = canvas.getObjects();
           const bgObj = objects.find((o) => (o as any)._isBgImage);
           if (bgObj) canvas.remove(bgObj);
@@ -205,60 +267,73 @@ export function useCanvasState() {
           canvas.add(img);
           canvas.sendObjectToBack(img);
           canvas.requestRenderAll();
-          saveHistory();
+          saveHistory(pageId);
         });
       }
     },
-    [canvas, canvasWidth, canvasHeight, saveHistory]
+    [getActiveCanvas, canvasWidth, canvasHeight, saveHistory]
   );
 
   // ── Object manipulation ─────────────────────────────────────────────
 
   const updateSelectedObject = useCallback(
     (props: Record<string, unknown>) => {
-      if (!canvas || !selectedObject) return;
+      const canvas = getActiveCanvas();
+      const pageId = activeCanvasIdRef.current;
+      if (!canvas || !selectedObject || !pageId) return;
       selectedObject.set(props as Partial<fabric.FabricObject>);
       canvas.requestRenderAll();
-      saveHistory();
-      // Force re-render of the selected object state
+      saveHistory(pageId);
       setSelectedObject({ ...selectedObject } as fabric.FabricObject);
     },
-    [canvas, selectedObject, saveHistory]
+    [getActiveCanvas, selectedObject, saveHistory]
   );
 
   const deleteSelected = useCallback(() => {
+    const canvas = getActiveCanvas();
     if (!canvas) return;
     const active = canvas.getActiveObjects();
     if (active.length === 0) return;
     active.forEach((obj) => canvas.remove(obj));
     canvas.discardActiveObject();
     canvas.requestRenderAll();
-  }, [canvas]);
+  }, [getActiveCanvas]);
 
   // ── Undo / Redo ─────────────────────────────────────────────────────
 
   const restoreFromHistory = useCallback(
     (index: number) => {
-      if (!canvas || index < 0 || index >= historyRef.current.length) return;
-      isRestoringRef.current = true;
-      historyIndexRef.current = index;
-      const json = historyRef.current[index];
+      const pageId = activeCanvasIdRef.current;
+      const canvas = getActiveCanvas();
+      if (!canvas || !pageId) return;
+      const hist = historyMapRef.current.get(pageId);
+      if (!hist || index < 0 || index >= hist.entries.length) return;
+      isRestoringRef.current.add(pageId);
+      hist.index = index;
+      const json = hist.entries[index];
       canvas.loadFromJSON(JSON.parse(json)).then(() => {
         canvas.requestRenderAll();
-        isRestoringRef.current = false;
-        setCanUndo(index > 0);
-        setCanRedo(index < historyRef.current.length - 1);
+        isRestoringRef.current.delete(pageId);
+        updateUndoRedoState(pageId);
       });
     },
-    [canvas]
+    [getActiveCanvas, updateUndoRedoState]
   );
 
   const undo = useCallback(() => {
-    restoreFromHistory(historyIndexRef.current - 1);
+    const pageId = activeCanvasIdRef.current;
+    if (!pageId) return;
+    const hist = historyMapRef.current.get(pageId);
+    if (!hist) return;
+    restoreFromHistory(hist.index - 1);
   }, [restoreFromHistory]);
 
   const redo = useCallback(() => {
-    restoreFromHistory(historyIndexRef.current + 1);
+    const pageId = activeCanvasIdRef.current;
+    if (!pageId) return;
+    const hist = historyMapRef.current.get(pageId);
+    if (!hist) return;
+    restoreFromHistory(hist.index + 1);
   }, [restoreFromHistory]);
 
   // ── Canvas size ─────────────────────────────────────────────────────
@@ -267,16 +342,16 @@ export function useCanvasState() {
     (width: number, height: number) => {
       setCanvasWidth(width);
       setCanvasHeight(height);
-      if (canvas) {
-        // Update the actual canvas dimensions
-        const dpr = window.devicePixelRatio || 1;
+      // Resize all canvases
+      const dpr = window.devicePixelRatio || 1;
+      for (const canvas of canvasMapRef.current.values()) {
         canvas.setDimensions({ width: width * dpr, height: height * dpr }, { cssOnly: false });
         canvas.setDimensions({ width, height }, { cssOnly: true });
         canvas.setViewportTransform([dpr, 0, 0, dpr, 0, 0]);
         canvas.requestRenderAll();
       }
     },
-    [canvas]
+    []
   );
 
   // ── Zoom ────────────────────────────────────────────────────────────
@@ -296,6 +371,7 @@ export function useCanvasState() {
   // ── Export ──────────────────────────────────────────────────────────
 
   const exportPNG = useCallback(() => {
+    const canvas = getActiveCanvas();
     if (!canvas) return;
     const activeObj = canvas.getActiveObject();
     canvas.discardActiveObject();
@@ -316,43 +392,29 @@ export function useCanvasState() {
       canvas.setActiveObject(activeObj);
       canvas.requestRenderAll();
     }
-  }, [canvas]);
+  }, [getActiveCanvas]);
 
   // ── Serialization ───────────────────────────────────────────────────
 
   const getCanvasJSON = useCallback(() => {
+    const canvas = getActiveCanvas();
     if (!canvas) return "{}";
     return JSON.stringify(canvas.toJSON());
-  }, [canvas]);
+  }, [getActiveCanvas]);
 
-  const loadCanvasJSON = useCallback(
-    (json: string) => {
-      if (!canvas) return;
-      isRestoringRef.current = true;
-      try {
-        const parsed = JSON.parse(json);
-        canvas.loadFromJSON(parsed).then(() => {
-          canvas.requestRenderAll();
-          isRestoringRef.current = false;
-          // Reset history
-          historyRef.current = [JSON.stringify(canvas.toJSON())];
-          historyIndexRef.current = 0;
-          setCanUndo(false);
-          setCanRedo(false);
-        });
-      } catch {
-        isRestoringRef.current = false;
-      }
-    },
-    [canvas]
-  );
+  const getCanvasJSONForPage = useCallback((pageId: string) => {
+    const canvas = canvasMapRef.current.get(pageId);
+    if (!canvas) return "{}";
+    return JSON.stringify(canvas.toJSON());
+  }, []);
 
   const loadTemplate = useCallback(
     (template: Template) => {
       setCanvasWidth(template.width);
       setCanvasHeight(template.height);
-      if (canvas) {
-        const dpr = window.devicePixelRatio || 1;
+      // Template loading — resize all canvases to new dimensions
+      const dpr = window.devicePixelRatio || 1;
+      for (const canvas of canvasMapRef.current.values()) {
         canvas.setDimensions(
           { width: template.width * dpr, height: template.height * dpr },
           { cssOnly: false }
@@ -360,9 +422,23 @@ export function useCanvasState() {
         canvas.setDimensions({ width: template.width, height: template.height }, { cssOnly: true });
         canvas.setViewportTransform([dpr, 0, 0, dpr, 0, 0]);
       }
-      loadCanvasJSON(template.canvas_json);
+      // Load template JSON onto active canvas
+      const canvas = getActiveCanvas();
+      const pageId = activeCanvasIdRef.current;
+      if (canvas && pageId) {
+        isRestoringRef.current.add(pageId);
+        canvas.loadFromJSON(JSON.parse(template.canvas_json)).then(() => {
+          canvas.requestRenderAll();
+          isRestoringRef.current.delete(pageId);
+          historyMapRef.current.set(pageId, {
+            entries: [JSON.stringify(canvas.toJSON())],
+            index: 0,
+          });
+          updateUndoRedoState(pageId);
+        });
+      }
     },
-    [canvas, loadCanvasJSON]
+    [getActiveCanvas, updateUndoRedoState]
   );
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────
@@ -376,18 +452,33 @@ export function useCanvasState() {
       } else if (meta && e.key === "z" && e.shiftKey) {
         e.preventDefault();
         redo();
-      } else if ((e.key === "Delete" || e.key === "Backspace") && !isTextEditing(canvas)) {
+      } else if ((e.key === "Delete" || e.key === "Backspace") && !isTextEditing()) {
         e.preventDefault();
         deleteSelected();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo, deleteSelected, canvas]);
+  }, [undo, redo, deleteSelected]);
+
+  function isTextEditing(): boolean {
+    const canvas = getActiveCanvas();
+    if (!canvas) return false;
+    const obj = canvas.getActiveObject();
+    return obj instanceof fabric.Textbox && obj.isEditing === true;
+  }
 
   return {
-    canvas,
-    setCanvas,
+    // Canvas map management
+    registerCanvas,
+    unregisterCanvas,
+    setActiveCanvas,
+    activeCanvasId,
+    canvasMap: canvasMapRef,
+    // For backward compat (right-sidebar uses canvas directly)
+    get canvas() {
+      return getActiveCanvas();
+    },
     selectedObject,
     canvasWidth,
     canvasHeight,
@@ -411,13 +502,7 @@ export function useCanvasState() {
     zoomOut,
     exportPNG,
     getCanvasJSON,
-    loadCanvasJSON,
+    getCanvasJSONForPage,
     loadTemplate,
   };
-}
-
-function isTextEditing(canvas: fabric.Canvas | null): boolean {
-  if (!canvas) return false;
-  const obj = canvas.getActiveObject();
-  return obj instanceof fabric.Textbox && obj.isEditing === true;
 }

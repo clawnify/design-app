@@ -1,5 +1,5 @@
 export interface Design {
-  id: number;
+  id: string;
   name: string;
   canvas_json: string;
   width: number;
@@ -9,8 +9,21 @@ export interface Design {
   updated_at: string;
 }
 
+export interface Page {
+  id: string;
+  design_id: string;
+  title: string;
+  canvas_json: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface DesignWithPages extends Design {
+  pages: Page[];
+}
+
 export interface Template {
-  id: number;
+  id: string;
   name: string;
   category: string;
   canvas_json: string;
