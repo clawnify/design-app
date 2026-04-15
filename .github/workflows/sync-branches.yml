@@ -1,0 +1,27 @@
+name: Sync main ↔ master
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync branches
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            TARGET="master"
+          else
+            TARGET="main"
+          fi
+
+          git push origin HEAD:refs/heads/$TARGET
