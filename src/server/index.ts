@@ -1,10 +1,49 @@
 import { createApp, createRoute, z } from "@clawnify/app";
 import { query, get, run } from "./db.js";
 import { putUpload, getUpload } from "./uploads.js";
+import { SEED_TEMPLATES } from "./seed-templates.js";
 
 type Env = { Bindings: { DB: D1Database } };
 
 const app = createApp<Env>({ title: "OpenDesign API", version: "1.0.0" });
+
+// ── Starter templates ───────────────────────────────────────────────
+//
+// schema.sql is applied as DDL only by the Clawnify deploy pipeline, so the
+// starter templates cannot be seeded there. They are inserted here instead,
+// once per isolate, on the first request that reaches the app.
+//
+// Seeded only while the table is empty — the semantics the old schema.sql
+// comment described. INSERT OR IGNORE alone is not enough: a row the user
+// deleted no longer conflicts, so it would come back on the next cold isolate.
+// The count guard keeps a deletion deleted; INSERT OR IGNORE on the explicit
+// id keeps an edit intact and makes two concurrent cold requests harmless.
+// Failures are swallowed — sample data must never turn into a failed request.
+
+let seeded = false;
+
+async function ensureSeeded() {
+  if (seeded) return;
+  seeded = true;
+  try {
+    const existing = await get<{ c: number }>("SELECT COUNT(*) as c FROM templates");
+    if ((existing?.c ?? 0) > 0) return;
+    for (const t of SEED_TEMPLATES) {
+      await run(
+        "INSERT OR IGNORE INTO templates (id, name, category, canvas_json, width, height, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [t.id, t.name, t.category, t.canvas_json, t.width, t.height, t.sort_order]
+      );
+    }
+  } catch {
+    seeded = false;
+  }
+}
+
+// Runs after createApp's own initDB middleware, so the DB is ready here.
+app.use("*", async (_c, next) => {
+  await ensureSeeded();
+  await next();
+});
 
 // ── Schemas ──────────────────────────────────────────────────────────
 
